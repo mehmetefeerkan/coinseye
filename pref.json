@@ -1,0 +1,6 @@
+{
+    "preferedNearFiat": "*",
+    "targets": ["SAND", "AMP"],
+    "alertingRisingIterations": 5,
+    "coinsRefreshIntervalSeconds": 5 
+}

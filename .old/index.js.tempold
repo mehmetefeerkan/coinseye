@@ -1,0 +1,187 @@
+const axios = require('axios')
+const express = require('express')
+const app = express()
+const port = 80
+let inheritHistoric = true
+const decreaseTolerance = 0.0002
+const PouchDB = require('pouchdb');
+var db = new PouchDB('coins');
+let mongoose_ = false
+let quickdb_ = true
+
+app.get('/coins', (req, res) => {
+    res.send(coins)
+})
+app.get('/coins/:cname', (req, res) => {
+    res.send(coins[req.params.cname])
+})
+app.get('/coins/topinst', (req, res) => {
+    let tempar = []
+    Object.keys(coins).forEach(element => {
+        tempar.push(coins[element])
+        tempar.sort((a, b) => (a.states.secondly.instances > b.states.secondly.instances) ? 1 : -1)
+    });
+    res.send(tempar)
+})
+
+app.get('/coinsData', (req, res) => {
+    res.send(coinsData)
+})
+
+app.listen(port, () => {
+    console.log(`Example app listening at http://localhost:${port}`)
+})
+
+let coinsData = {}
+let coins = {}
+
+
+async function main() {
+    db.get('coins').then(function (doc) {
+        Object.keys(doc.data).forEach(element => {
+            console.log("creating", doc.data[element].name);
+            new coin(doc.data[element].name, doc.data[element].states)
+        })
+    }).then(function (response) {   
+        fetchCoins()
+        setInterval(() => {
+            fetchCoins()
+        }, 500);
+    }).catch(function (err) {
+        console.log(err);
+        if (err.status === 404) {
+            db.put({
+                _id: 'coins',
+                data: coins
+            }).then(function (response) {
+                process.exit(1)
+                // handle response
+              }).catch(function (err) {
+                console.log(err);
+              });
+        }
+    });
+    setInterval(() => {
+        db.get('coins').then(function (doc) {
+            return db.put({
+                _id: 'coins',
+                _rev: doc._rev,
+                data: coins
+            });
+        }).then(function (response) {
+            console.log(response);
+        }).catch(function (err) {
+            console.log(err);
+        });
+    }, 4000);
+}
+
+main()
+async function fetchCoins(init) {
+    axios.get("https://api.binance.com/api/v3/ticker/price")
+        .then(res => {
+            let datarray = res.data
+            datarray.forEach(element => {
+                if (element.symbol /* == "SANDUSDT"*/) {
+                    coinsData[element.symbol] = element
+                }
+                if (!coins[element.symbol]) {
+                    new coin(element.symbol)
+                }
+            });
+            return
+        })
+        .catch(err => {
+            console.error(err);
+        })
+}
+
+function coin(name, states) {
+    function state() {
+        this.increase = {
+            true: false,
+            instances: 0,
+            by: {
+                amount: 0,
+                relDiff: 0
+            }
+        },
+            this.decrease = {
+                true: false,
+                tolerated: true,
+                tolerations: 0,
+                instances: 0,
+                by: {
+                    amount: 0,
+                    relDiff: 0
+                }
+            }
+        this.reference = 0
+    }
+    this.name = name
+    this.price = null
+    this.states = states || {}
+    this.surging = false
+    this.surgingSince = false
+    this.upScoreGlobal = 0
+    this.relDiff = null
+    this.updatePrice = function (newPrice, schedulation) {
+        if (newPrice === 0) return
+        if (!this.states[schedulation]) { this.states[schedulation] = new state() }
+        this.states[schedulation].reference = parseFloat(this.states[schedulation].reference)
+        newPrice = parseFloat(newPrice)
+        this.states[schedulation].was = this.states[schedulation].reference
+        if (this.states[schedulation].reference < newPrice) { // if coin price is smaller than new price
+            this.states[schedulation].increase.true = true
+            this.states[schedulation].increase.instances++
+            this.states[schedulation].increase.by.amount = newPrice - this.states[schedulation].reference
+            this.states[schedulation].increase.by.relDiff = relDiff(newPrice, this.states[schedulation].reference)
+            this.upScoreGlobal++
+
+            this.states[schedulation].decrease.true = false
+            this.states[schedulation].decrease.tolerated = false
+            this.states[schedulation].decrease.by.amount = 0
+            this.states[schedulation].decrease.by.relDiff = 0
+
+        } else {
+            this.states[schedulation].decrease.true = true
+            this.states[schedulation].decrease.instances++
+            this.states[schedulation].decrease.by.amount = this.states[schedulation].reference - newPrice
+            this.states[schedulation].decrease.by.relDiff = relDiff(newPrice, this.states[schedulation].reference)
+            this.upScoreGlobal--
+            if (this.states[schedulation].decrease.by.relDiff < decreaseTolerance) {
+                this.states[schedulation].decrease.tolerations++
+                this.states[schedulation].decrease.tolerated = true
+                this.upScoreGlobal++
+            }
+
+            this.states[schedulation].increase.true = false
+            this.states[schedulation].increase.by.amount = 0
+            this.states[schedulation].increase.by.relDiff = 0
+
+        }
+        this.states[schedulation].reference = newPrice
+    }
+    coins[this.name] = /*coins[this.name] || */this
+    function scheduleCheck(type, time, coinName) {
+        setInterval(() => {
+            coins[coinName].updatePrice(getCoinPrice(coinName), type)
+        }, time)
+    }
+    new scheduleCheck("secondly", 1000, this.name, this.price)
+    new scheduleCheck("biminutely", 1000 * 30, this.name)
+    new scheduleCheck("minutely", 1000 * 60, this.name)
+    new scheduleCheck("tenminutes", (1000 * 60) * 10, this.name)
+    new scheduleCheck("bihourly", (1000 * 60) * 30, this.name)
+    new scheduleCheck("hourly", (1000 * 60) * 60, this.name)
+}
+
+function relDiff(a, b) {
+    return 100 * Math.abs((a - b) / ((a + b) / 2));
+}
+function getCoinPrice(cn) {
+    if (!coinsData[cn]) return 0
+    return coinsData[cn].price
+}
+
+//6jqFj6xwBhw7/vKNMUgHe8n42qYdFqChw7l3lGAk cwatch 0UMGYBKKQPYT6O88FJPE

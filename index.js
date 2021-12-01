@@ -3,10 +3,16 @@ const decreaseTolerance = 0.0002
 const PouchDB = require('pouchdb');
 const express = require('express')
 const app = express()
+var expressWs = require('express-ws')(app);
 const port = 1357
 var bodyParser = require('body-parser')
 app.use(bodyParser.json())
 const fs = require('fs');
+const open = require('open')
+let wsInterval = 1000
+
+
+let mobilePush = false
 
 app.use(require('cors')())
 const notifier = require('node-notifier');
@@ -15,6 +21,9 @@ const notifier = require('node-notifier');
 
 app.get('/coins', (req, res) => {
     res.send(coins)
+})
+app.get('/coinsData', (req, res) => {
+    res.send(coinsData)
 })
 
 app.get('/coins/list/increase/instances', (req, res) => {
@@ -27,8 +36,13 @@ app.get('/coins/list/increase/instances', (req, res) => {
 })
 
 let breakThrough = []
-app.get('/coins/list/breakthru', (req, res) => {
+let breakThroughDetailed = []
+
+app.get('/coins/list/breakthru/', (req, res) => {
     res.send(breakThrough)
+})
+app.get('/coins/list/breakthru/detailed', (req, res) => {
+    res.send(breakThroughDetailed)
 })
 
 app.get('/coins/list/upscore', (req, res) => {
@@ -45,6 +59,9 @@ app.get('/coins/list/upscore/absolute', (req, res) => {
 })
 app.get('/coins/listtop/upscore/absolute/:top', (req, res) => {
     res.send(getRankedData("upScoreGlobal", true).slice(0, parseInt(req.params.top)))
+})
+app.get('/coins/listtop/increaseAverage/absolute/:top', (req, res) => {
+    res.send(getRankedData("increaseAverage", true).slice(0, parseInt(req.params.top)))
 })
 app.get('/coins/list/price/', (req, res) => {
     res.send(getRankedData("price", false))
@@ -110,6 +127,68 @@ app.post('/coins/', async (req, res) => {
     }
 })
 
+app.ws('/coins', function (ws, req) {
+    setInterval(() => {
+        ws.send(JSON.stringify(coins))
+    }, wsInterval);
+});
+app.ws('/stats', function (ws, req) {
+    setInterval(() => {
+        let clients = 0
+        expressWs.getWss().clients.forEach(client => {
+            // Check if connection is still open
+            if (client.readyState !== client.OPEN) return;
+            clients++
+          });
+        ws.send(clients)
+    }, wsInterval);
+});
+app.ws('/coins/list/breakthru/', function (ws, req) {
+    setInterval(() => {
+        ws.send(JSON.stringify(breakThrough))
+    }, wsInterval);
+})
+app.ws('/coins/list/breakthru/detailed', function (ws, req) {
+    setInterval(() => {
+        ws.send(JSON.stringify(breakThroughDetailed))
+    }, wsInterval);
+})
+app.ws('/coins/list/upscore', function (ws, req) {
+    setInterval(() => {
+        ws.send(JSON.stringify(getRankedData("upScoreGlobal", false)))
+    }, wsInterval);
+})
+app.ws('/coins/list/upscore/reset', function (ws, req) {
+    setInterval(() => {
+        ws.send(JSON.stringify(setCoinData("upScoreGlobal", 0)))
+    }, wsInterval);
+})
+app.ws('/coins/list/upscore/absolute', function (ws, req) {
+    setInterval(() => {
+        ws.send(JSON.stringify(getRankedData("upScoreGlobal", true)))
+    }, wsInterval);
+})
+app.ws('/coins/list/price/', function (ws, req) {
+    setInterval(() => {
+        ws.send(JSON.stringify(getRankedData("price", false)))
+    }, wsInterval);
+})
+app.ws('/coins/list/price/absolute', function (ws, req) {
+    setInterval(() => {
+        ws.send(JSON.stringify(getRankedData("price", true)))
+    }, wsInterval);
+})
+app.ws('/coins/list/increaseAverage/', function (ws, req) {
+    setInterval(() => {
+        ws.send(JSON.stringify(getRankedData("increaseAverage", false)))
+    }, wsInterval);
+})
+app.ws('/coins/list/increaseAverage/absolute', function (ws, req) {
+    setInterval(() => {
+        ws.send(JSON.stringify(getRankedData("increaseAverage", true)))
+    }, wsInterval);
+})
+
 app.listen(port)
 
 let coinsData = {}
@@ -119,9 +198,8 @@ async function init() {
     let data_ = fs.readFileSync('./database.json', 'utf8');
 
     // parse JSON string to JSON object
-    data_ = JSON.parse(data_);
+    data_ = JSON.parse(data_ || JSON.stringify({}));
     Object.keys(data_).forEach(element => {
-        console.log("creating", data_[element].name);
         new coin(data_[element].name, data_[element].states)
     })
     fs.readdirSync("./markets").forEach(file => {
@@ -129,15 +207,15 @@ async function init() {
             let currentMarket = require(`./markets/${file}`)
             setInterval(async () => {
                 let coins_ = await currentMarket.fetchCoins()
-                coins_.forEach(element => {
-                    coinsData[element.symbol] = element
-                    if (!coins[element.symbol]) {
-                        console.log("xcreating", element.symbol);
-                        new coin(element.symbol)
-                    }
-                });
+                if (coins_) {
+                    coins_.forEach(element => {
+                        coinsData[element.symbol] = element
+                        if (!coins[element.symbol]) {
+                            new coin(element.symbol)
+                        }
+                    });
+                }
             }, currentMarket.refresh);
-            console.log(currentMarket);
         }
     });
     init = true
@@ -145,9 +223,9 @@ async function init() {
         fs.writeFile('./database.json', JSON.stringify(coins), 'utf8', (err) => {
 
             if (err) {
-                console.log(`Error writing file: ${err}`);
+                console.error(`Error writing file: ${err}`);
             } else {
-                console.log(`File is written successfully!`);
+                //console. log(`File is written successfully!`);
             }
 
         });
@@ -163,21 +241,66 @@ async function init() {
         let diff2 = topUpScore.filter(x => toNames.indexOf(x) === -1)
         breakThrough = []
         diff.forEach(element => {
-            topUpScore.length < 8 ? doNothing() : notifier.notify(element + " is now in the top 10")
+            topUpScore.length < 8 ? doNothing() : notifyBreakthrough(element)
             breakThrough.push(element)
         });
         topUpScore = []
         getRankedData("upScoreGlobal", true).slice(0, 10).forEach(element => {
             topUpScore.push(element.name)
         });
-    }, 30000);
+    }, 5000);
 
 }
+
+setInterval(() => {
+    breakThroughDetailed = breakThroughDetailed.slice(0, 10)
+}, 12000);
+
+function notifyBreakthrough(coinName) {
+    let coinWorksWith = (coinsData[coinName].worksWith);
+    let coinSymbol = (require(`./markets/${coinsData[coinName].market.module}`).sanitizeSymbolToTokenName(coinName));
+    breakThroughDetailed.push(`${coinSymbol}-${coinWorksWith}`)
+    notifier.notify(
+        {
+            title: 'A coin just reached upScore top 10',
+            message: `${coinName} is now in the top 10`,
+            sound: true, // Only Notification Center or Windows Toasters
+            icon: 'https://s2.coinmarketcap.com/static/img/coins/64x64/1.png'
+        },
+        function (err, response, metadata) {
+            // Response is response from notification
+            // Metadata contains activationType, activationAt, deliveredAt
+        }
+    );
+    if (mobilePush) {
+        var options = {
+            method: 'POST',
+            url: 'https://notify.run/uNrbu4wt7YmXoajFopwL',
+            data: `${coinName} is now in the upScore top 10 ranking.`,
+        };
+
+        axios.request(options).then(function (response) {
+            console.log(response.data);
+        }).catch(function (error) {
+            console.error(error);
+        });
+    }
+}
+
+notifier.on('click', function (notifierObject, options, event) {
+    let coin = (options.m).split(" ")[0]
+    console.log("our coin is: ", coin);
+    let coinWorksWith = (coinsData[coin].worksWith);
+    let coinSymbol = (require(`./markets/${coinsData[coin].market.module}`).sanitizeSymbolToTokenName(coin));
+    breakThroughDetailed.push(`${coinSymbol}-${coinWorksWith}`)
+    console.log("launching", `https://cryptowat.ch/tr-tr/charts/${coinsData[coin].market.slug}:${coinSymbol}-${coinWorksWith}`);
+    open(`https://cryptowat.ch/tr-tr/charts/${coinsData[coin].market.slug}:${coinSymbol}-${coinWorksWith}`)
+});
+
 
 init()
 
 function coin(name, states) {
-    console.log(name);
     function state() {
         this.increase = {
             true: false,
@@ -268,9 +391,15 @@ function coin(name, states) {
     function scheduleCheck(type, time, coinName) {
         setInterval(() => {
             coins[coinName].updatePrice(getCoinPrice(coinName), type)
-        }, time)
+        }, time / 2)
     }
-    //new scheduleCheck("secondly", 1000, this.name, this.price)
+    // new scheduleCheck("secondly", 5000, this.name, this.price)
+    // new scheduleCheck("biminutely", 1000 * 30, this.name)
+    // new scheduleCheck("minutely", 1000 * 60, this.name)
+    // new scheduleCheck("tenminutes", (1000 * 60) * 10, this.name)
+    // new scheduleCheck("bihourly", (1000 * 60) * 30, this.name)
+    // new scheduleCheck("hourly", (1000 * 60) * 60, this.name)
+    //new scheduleCheck("secondly", 5000, this.name, this.price)
     new scheduleCheck("biminutely", 1000 * 30, this.name)
     new scheduleCheck("minutely", 1000 * 60, this.name)
     new scheduleCheck("tenminutes", (1000 * 60) * 10, this.name)
@@ -290,8 +419,4 @@ function doNothing() {
     return
 }
 
-/* const bc = require('./binance.js')
-async function fd() {
-    console.log(await bc.fetchCoins());
-}
-fd() */
+

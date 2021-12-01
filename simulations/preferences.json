@@ -1,0 +1,5 @@
+{
+    "entryBudget": 100,
+    "maxLossPercentage": 3,
+    "targetProfitPercentage": 5
+}

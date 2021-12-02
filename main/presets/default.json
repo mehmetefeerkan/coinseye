@@ -1,0 +1,8 @@
+{
+    "port": 1357,
+    "wsInterval": 2000,
+    "mobilePush": true,
+    "systemPush": true,
+    "dbSaveInterval": 5000,
+    "breakthroughInterval": 5000
+  }

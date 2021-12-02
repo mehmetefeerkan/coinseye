@@ -1,0 +1,39 @@
+{
+    "port": {
+        "definition": "Port selection",
+        "question": "Port that the app will server on? : ",
+        "type": "int",
+        "maxVal": 9999
+    },
+    "wsInterval": {
+        "definition": "Websocket data push interval",
+        "question": "Websocket data push interval? : ",
+        "type": "int",
+        "maxVal": 10000,
+        "minVal": 500
+    },
+    "mobilePush": {
+        "definition": "Mobile push notifications",
+        "question": "Enable mobile notify.run notifications for coin surges? : ",
+        "type": "bool"
+    },
+    "systemPush": {
+        "definition": "System push notifications",
+        "question": "Enable system snoreToast notifications for coin surges? : ",
+        "type": "bool"
+    },
+    "dbSaveInterval": {
+        "definition": "Database update interval",
+        "question": "Websocket update interval? : ",
+        "type": "int",
+        "maxVal": 60000,
+        "minVal": 1000
+    },
+    "breakthroughInterval": {
+        "definition": "Breakthrough update interval",
+        "question": "Breakthrough update refresh interval? : ",
+        "type": "int",
+        "maxVal": 30000,
+        "minVal": 1000
+    }
+}

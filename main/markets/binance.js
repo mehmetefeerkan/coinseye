@@ -4,6 +4,9 @@ let coinMap = require('./maps/cnc.json').data
 marketModule = "binance.js"
 marketName = "binance"
 let datarray = []
+let staticdata = null
+
+
 async function fetchCoins(init) {
     return axios.get("https://api.binance.com/api/v3/ticker/price")
     .then(res => {
@@ -12,6 +15,7 @@ async function fetchCoins(init) {
         rd.forEach(element => {
             if(isWorkableWithFiatFakeSelections(element.symbol)) {
                 element.logo = getCoinLogo(sanitizeSymbolToTokenName(element.symbol))
+                element.name_alt = getAltName(sanitizeSymbolToTokenName(element.symbol))
                 element.market = {}
                 element.market.module = marketModule
                 element.market.slug = marketName
@@ -27,11 +31,22 @@ async function fetchCoins(init) {
     })
 }
 
+
 function getCoinLogo(coin) {
     let result = "https://s2.coinmarketcap.com/static/img/coins/64x64/1.png"
     coinMap.forEach(element => {
         if(((element.symbol)) === coin) {
             result = `https://s2.coinmarketcap.com/static/img/coins/64x64/${element.id}.png`
+        }
+    });
+    return result
+}
+
+function getAltName(coin) {
+    let result = coin
+    coinMap.forEach(element => {
+        if(((element.symbol)) === coin) {
+            result = `${element.name}`
         }
     });
     return result

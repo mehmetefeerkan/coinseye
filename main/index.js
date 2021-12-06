@@ -37,7 +37,7 @@ async function preinit() {
             if ((val === "true" || val === "false" || val === "y" || val === "n")) {
                 if (val === "true" || val === "y") {
                     prompt(availablePresets + `${chalk.blue("^ - Choose a preset : ")}`)
-                        .then(function (valx) {         
+                        .then(function (valx) {
                             if (availablePresets_[parseInt(valx)]) {
                                 settings = require(`./presets/${availablePresets_[parseInt(valx)]}`)
                                 init()
@@ -54,7 +54,7 @@ async function preinit() {
                         });
                     //use presets
                 } else {
-                    prompt_(settingsRasterKeys[0], 0); 
+                    prompt_(settingsRasterKeys[0], 0);
                 }
             }
         })
@@ -120,10 +120,11 @@ app.get('/coins/list/increase/instances', (req, res) => {
     tarr.sort((a, b) => (a.states.secondly.increase.instances > b.states.secondly.increase.instances) ? -1 : 1)
     res.send(tarr)
 })
-app.get('/coins/list/breakthru/', (req, res) => {
+
+app.get('/coins/breakthru/', (req, res) => {
     res.send(breakThrough)
 })
-app.get('/coins/list/breakthru/detailed', (req, res) => {
+app.get('/coins/breakthru/detailed', (req, res) => {
     res.send(breakThroughDetailed)
 })
 app.get('/coins/list/upscore', (req, res) => {
@@ -144,6 +145,9 @@ app.get('/coins/listtop/upscore/absolute/:top', (req, res) => {
 app.get('/coins/listtop/increaseAverage/absolute/:top', (req, res) => {
     res.send(getRankedData("increaseAverage", true).slice(0, parseInt(req.params.top)))
 })
+app.get('/coins/listtop/increaseNet/absolute/:top', (req, res) => {
+    res.send(getRankedData("increaseNet", true).slice(0, parseInt(req.params.top)))
+})
 app.get('/coins/list/price/', (req, res) => {
     res.send(getRankedData("price", false))
 })
@@ -156,8 +160,22 @@ app.get('/coins/list/increaseAverage/', (req, res) => {
 app.get('/coins/list/increaseAverage/absolute', (req, res) => {
     res.send(getRankedData("increaseAverage", true))
 })
+app.get('/coins/list/increaseNet/', (req, res) => {
+    res.send(getRankedData("increaseNet", false))
+})
+app.get('/coins/list/increaseNet/absolute', (req, res) => {
+    res.send(getRankedData("increaseNet", true))
+})
 app.get('/coins/get/:cname', (req, res) => {
     res.send(coins[req.params.cname])
+})
+app.get('/settings/set/mobilepush/:state', (req, res) => {
+    req.params.state === "true" ? settings.mobilePush = true : settings.mobilePush = false
+    res.send(settings)
+})
+app.get('/settings/set/systempush/:state', (req, res) => {
+    req.params.state === "true" ? settings.systemPush = true : settings.systemPush = false
+    res.send(settings)
 })
 app.post('/coins/', async (req, res) => {
     let incomingCoin = req.body
@@ -253,11 +271,11 @@ async function init() {
     console.log(chalk.greenBright(`Server started listening on ${settings.port}`));
     let data_ = fs.readFileSync('./databases/database.json', 'utf8');
     console.log(chalk.greenBright("Loaded database."));
-    
+
     // parse JSON string to JSON object
     data_ = JSON.parse(data_ || JSON.stringify({}));
     Object.keys(data_).forEach(element => {
-        new coin(data_[element].name, data_[element].states)
+        new coin(data_[element])
     })
     fs.readdirSync("./markets").forEach(file => {
         if (file.endsWith("js")) {
@@ -268,7 +286,7 @@ async function init() {
                     coins_.forEach(element => {
                         coinsData[element.symbol] = element
                         if (!coins[element.symbol]) {
-                            new coin(element.symbol)
+                            new coin(element)
                         }
                     });
                 }
@@ -278,16 +296,16 @@ async function init() {
     console.log(chalk.greenBright("Loaded markets."));
     setInterval(() => {
         fs.writeFile('./database.json', JSON.stringify(coins), 'utf8', (err) => {
-            
+
             if (err) {
                 console.error(`Error writing file: ${err}`);
             } else {
                 //console. log(`File is written successfully!`);
             }
-            
+
         });
     }, settings.dbSaveInterval);
-    
+
     setInterval(() => {
         let toNames = []
         getRankedData("upScoreGlobal", true).slice(0, 10).forEach(element => {
@@ -304,40 +322,44 @@ async function init() {
         getRankedData("upScoreGlobal", true).slice(0, 10).forEach(element => {
             topUpScore.push(element.name)
         });
-    }, settings.breakthroughInterval);
+    }, /*settings.breakthroughInterval*/ 15000);
     init = true
     console.log(chalk.greenBright("Fully initiated."));
 }
 
 
 function notifyBreakthrough(coinName) {
-    let coinWorksWith = (coinsData[coinName].worksWith);
-    let coinSymbol = (require(`./markets/${coinsData[coinName].market.module}`).sanitizeSymbolToTokenName(coinName));
-    breakThroughDetailed.push(`${coinSymbol}-${coinWorksWith}`)
-    notifier.notify(
-        {
-            title: 'A coin just reached upScore top 10',
-            message: `${coinName} is now in the top 10`,
-            sound: true, // Only Notification Center or Windows Toasters
-            icon: 'https://s2.coinmarketcap.com/static/img/coins/64x64/1.png'
-        },
-        function (err, response, metadata) {
-            // Response is response from notification
-            // Metadata contains activationType, activationAt, deliveredAt
+    if (coinsData[coinName]) {
+        let coinWorksWith = (coinsData[coinName].worksWith);
+        let coinSymbol = (require(`./markets/${coinsData[coinName].market.module}`).sanitizeSymbolToTokenName(coinName));
+        breakThroughDetailed.push(`${coinSymbol}-${coinWorksWith}`)
+        if (settings.systemPush) {
+            notifier.notify(
+                {
+                    title: 'A coin just reached upScore top 10',
+                    message: `${coinName} is now in the top 10`,
+                    sound: false, // Only Notification Center or Windows Toasters
+                    icon: 'https://s2.coinmarketcap.com/static/img/coins/64x64/1.png'
+                },
+                function (err, response, metadata) {
+                    // Response is response from notification
+                    // Metadata contains activationType, activationAt, deliveredAt
+                }
+            );
         }
-    );
-    if (settings.mobilePush) {
-        var options = {
-            method: 'POST',
-            url: 'https://notify.run/uNrbu4wt7YmXoajFopwL',
-            data: `${coinName} is now in the upScore top 10 ranking.`,
-        };
+        if (settings.mobilePush) {
+            var options = {
+                method: 'POST',
+                url: 'https://notify.run/uNrbu4wt7YmXoajFopwL',
+                data: `${coinName} is now in the upScore top 10 ranking.`,
+            };
 
-        axios.request(options).then(function (response) {
-            //console.log(response.data);
-        }).catch(function (error) {
-            console.error(error);
-        });
+            axios.request(options).then(function (response) {
+                //console.log(response.data);
+            }).catch(function (error) {
+                console.error(error);
+            });
+        }
     }
 }
 
@@ -353,7 +375,9 @@ notifier.on('click', function (notifierObject, options, event) {
 
 // init()
 
-function coin(name, states) {
+function coin(incoin) {
+    let name = incoin.name
+    let states = incoin.states
     function state() {
         this.increase = {
             true: false,
@@ -385,7 +409,7 @@ function coin(name, states) {
     this.increaseNet = 0
     this.decreaseAverage = 0
     this.updatePrice = function (newPrice, schedulation) {
-
+        this.data = coinsData[this.name]
         if (newPrice === 0) return
 
         if (!this.states[schedulation]) { this.states[schedulation] = new state() }
@@ -399,7 +423,7 @@ function coin(name, states) {
             this.states[schedulation].increase.by.amount = newPrice - this.states[schedulation].reference //increased by the new price minus this schedulation's reference price
             this.states[schedulation].increase.by.relDiff = relDiff(newPrice, this.states[schedulation].reference) //relative difference between old price and new price
             this.states[schedulation].increase.by.percDiff = percDiff(newPrice, this.states[schedulation].reference) //percDiff difference between old price and new price
-
+            this.upScoreGlobal++
             this.states[schedulation].decrease.since = 0 //decrease timemark reset
             this.states[schedulation].decrease.true = false //not decreasing right now
             this.states[schedulation].decrease.tolerated = false //decrease not tolerated since its not decreasing
@@ -414,7 +438,7 @@ function coin(name, states) {
             this.states[schedulation].decrease.by.amount = newPrice - this.states[schedulation].reference //decreased by the new price minus this schedulation's reference price
             this.states[schedulation].decrease.by.relDiff = relDiff(newPrice, this.states[schedulation].reference) //relative difference between old price and new price
             this.states[schedulation].decrease.by.percDiff = percDiff(newPrice, this.states[schedulation].reference) //percDiff difference between old price and new price
-
+            this.upScoreGlobal--
             this.states[schedulation].increase.since = 0 //increase timemark reset
             this.states[schedulation].increase.true = false //not decreasing right now
             this.states[schedulation].increase.tolerated = false //increase not tolerated since its not decreasing

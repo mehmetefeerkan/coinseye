@@ -33,10 +33,10 @@ async function fetchCoins(init) {
 
 
 function getCoinLogo(coin) {
-    let result = "https://s2.coinmarketcap.com/static/img/coins/64x64/1.png"
+    let result = "https://s2.coinmarketcap.com/static/img/coins/128x128/1.png"
     coinMap.forEach(element => {
         if(((element.symbol)) === coin) {
-            result = `https://s2.coinmarketcap.com/static/img/coins/64x64/${element.id}.png`
+            result = `https://s2.coinmarketcap.com/static/img/coins/128x128/${element.id}.png`
         }
     });
     return result

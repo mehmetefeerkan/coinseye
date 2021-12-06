@@ -13,10 +13,15 @@ const chalk = require('chalk')
 const prompt = require('prompt-promise')
 const notifier = require('node-notifier');
 var settings = {}
-
+let schUpdatesCache = 0
+let schUpdatesIops = 0
 let settingsRaster = require('./config/raster.json')
 let settingsRasterKeys = Object.keys(settingsRaster)
-
+let schUpdates = 0
+setInterval(() => {
+    schUpdatesIops = (schUpdates - schUpdatesCache)
+    schUpdatesCache = schUpdates
+}, 1000);
 let myPromise = new Promise(function (myResolve, myReject) {
     // "Producing Code" (May take some time)
     setTimeout(() => {
@@ -93,8 +98,8 @@ async function prompt_(settingArea, settingIndex) {
         });
 }
 
-let breakThrough = []
-let breakThroughDetailed = []
+let upScoreBreakThrough = []
+let upScoreBreakThroughDetailed = []
 
 app.use(require('cors')())
 // String
@@ -109,6 +114,13 @@ app.use(function (req, res, next) {
 app.get('/coins', (req, res) => {
     res.send(coins)
 })
+app.get('/stats', (req, res) => {
+    res.send({
+        updatesPerSecond: schUpdates / process.uptime(),
+        updatesInOneSecond: schUpdatesIops,
+        allUpdates: schUpdates,
+    })
+})
 app.get('/coinsData', (req, res) => {
     res.send(coinsData)
 })
@@ -122,16 +134,25 @@ app.get('/coins/list/increase/instances', (req, res) => {
 })
 
 app.get('/coins/breakthru/', (req, res) => {
-    res.send(breakThrough)
+    res.send(upScoreBreakThrough)
 })
 app.get('/coins/breakthru/detailed', (req, res) => {
-    res.send(breakThroughDetailed)
+    res.send(upScoreBreakThroughDetailed)
+})
+app.get('/coins/increaseNet/breakthru/', (req, res) => {
+    res.send(increaseNetBreakThrough)
+})
+app.get('/coins/increaseNet/breakthru/detailed', (req, res) => {
+    res.send(increaseNetBreakThroughDetailed)
 })
 app.get('/coins/list/upscore', (req, res) => {
     res.send(getRankedData("upScoreGlobal", false))
 })
 app.get('/coins/listtop/upscore/:top', (req, res) => {
     res.send(getRankedData("upScoreGlobal", false).slice(0, parseInt(req.params.top)))
+})
+app.get('/coins/listtop/increaseNet/:top', (req, res) => {
+    res.send(getRankedData("increaseNet", false).slice(0, parseInt(req.params.top)))
 })
 app.get('/coins/list/upscore/reset', (req, res) => {
     res.send(setCoinData("upScoreGlobal", 0))
@@ -216,12 +237,12 @@ app.ws('/stats', function (ws, req) {
 });
 app.ws('/coins/list/breakthru/', function (ws, req) {
     setInterval(() => {
-        ws.send(JSON.stringify(breakThrough))
+        ws.send(JSON.stringify(upScoreBreakThrough))
     }, settings.wsInterval);
 })
 app.ws('/coins/list/breakthru/detailed', function (ws, req) {
     setInterval(() => {
-        ws.send(JSON.stringify(breakThroughDetailed))
+        ws.send(JSON.stringify(upScoreBreakThroughDetailed))
     }, settings.wsInterval);
 })
 app.ws('/coins/list/upscore', function (ws, req) {
@@ -264,6 +285,7 @@ app.ws('/coins/list/increaseAverage/absolute', function (ws, req) {
 
 let coinsData = {}
 let coins = {}
+let topIncrNet = []
 let topUpScore = []
 
 async function init() {
@@ -295,33 +317,54 @@ async function init() {
     });
     console.log(chalk.greenBright("Loaded markets."));
     setInterval(() => {
-        fs.writeFile('./database.json', JSON.stringify(coins), 'utf8', (err) => {
+        fs.writeFile('./databases/database.json', JSON.stringify(coins), 'utf8', (err) => {
 
             if (err) {
                 console.error(`Error writing file: ${err}`);
             } else {
-                //console. log(`File is written successfully!`);
+                console. log(`File is written successfully!`);
             }
 
         });
     }, settings.dbSaveInterval);
 
     setInterval(() => {
-        let toNames = []
-        getRankedData("upScoreGlobal", true).slice(0, 10).forEach(element => {
-            toNames.push(element.name)
-        });
-        let diff = toNames.filter(x => topUpScore.indexOf(x) === -1)
-        let diff2 = topUpScore.filter(x => toNames.indexOf(x) === -1)
-        breakThrough = []
-        diff.forEach(element => {
-            topUpScore.length < 8 ? doNothing() : notifyBreakthrough(element)
-            breakThrough.push(element)
-        });
-        topUpScore = []
-        getRankedData("upScoreGlobal", true).slice(0, 10).forEach(element => {
-            topUpScore.push(element.name)
-        });
+        function usbt() {
+            let toNames = []
+            getRankedData("upScoreGlobal", true).slice(0, 10).forEach(element => {
+                toNames.push(element.name)
+            });
+            let diff = toNames.filter(x => topUpScore.indexOf(x) === -1)
+            let diff2 = topUpScore.filter(x => toNames.indexOf(x) === -1)
+            upScoreBreakThrough = []
+            diff.forEach(element => {
+                topUpScore.length < 8 ? doNothing() : notifyBreakthrough(element)
+                upScoreBreakThrough.push(element)
+            });
+            topUpScore = []
+            getRankedData("upScoreGlobal", true).slice(0, 10).forEach(element => {
+                topUpScore.push(element.name)
+            });
+        }
+        function incrnetbt() {
+            let toNames = []
+            getRankedData("increaseNet", true).slice(0, 10).forEach(element => {
+                toNames.push(element.name)
+            });
+            let diff = toNames.filter(x => topIncrNet.indexOf(x) === -1)
+            let diff2 = topIncrNet.filter(x => toNames.indexOf(x) === -1)
+            increaseNetBreakThrough = []
+            diff.forEach(element => {
+                topIncrNet.length < 8 ? doNothing() : notifyBreakthrough(element)
+                increaseNetBreakThrough.push(element)
+            });
+            topIncrNet = []
+            getRankedData("increaseNet", true).slice(0, 10).forEach(element => {
+                topIncrNet.push(element.name)
+            });
+        }
+        usbt()
+        incrnetbt()
     }, /*settings.breakthroughInterval*/ 15000);
     init = true
     console.log(chalk.greenBright("Fully initiated."));
@@ -332,14 +375,14 @@ function notifyBreakthrough(coinName) {
     if (coinsData[coinName]) {
         let coinWorksWith = (coinsData[coinName].worksWith);
         let coinSymbol = (require(`./markets/${coinsData[coinName].market.module}`).sanitizeSymbolToTokenName(coinName));
-        breakThroughDetailed.push(`${coinSymbol}-${coinWorksWith}`)
+        upScoreBreakThroughDetailed.push(`${coinSymbol}-${coinWorksWith}`)
         if (settings.systemPush) {
             notifier.notify(
                 {
                     title: 'A coin just reached upScore top 10',
                     message: `${coinName} is now in the top 10`,
                     sound: false, // Only Notification Center or Windows Toasters
-                    icon: 'https://s2.coinmarketcap.com/static/img/coins/64x64/1.png'
+                    icon: 'https://s2.coinmarketcap.com/static/img/coins/128x128/1.png'
                 },
                 function (err, response, metadata) {
                     // Response is response from notification
@@ -368,7 +411,7 @@ notifier.on('click', function (notifierObject, options, event) {
     console.log("our coin is: ", coin);
     let coinWorksWith = (coinsData[coin].worksWith);
     let coinSymbol = (require(`./markets/${coinsData[coin].market.module}`).sanitizeSymbolToTokenName(coin));
-    breakThroughDetailed.push(`${coinSymbol}-${coinWorksWith}`)
+    upScoreBreakThroughDetailed.push(`${coinSymbol}-${coinWorksWith}`)
     open(`https://cryptowat.ch/tr-tr/charts/${coinsData[coin].market.slug}:${coinSymbol}-${coinWorksWith}`)
 });
 
@@ -376,7 +419,7 @@ notifier.on('click', function (notifierObject, options, event) {
 // init()
 
 function coin(incoin) {
-    let name = incoin.name
+    let name = incoin.symbol
     let states = incoin.states
     function state() {
         this.increase = {
@@ -431,7 +474,7 @@ function coin(incoin) {
             this.states[schedulation].decrease.by.relDiff = 0 //decrease relDiff reset
             this.states[schedulation].decrease.by.percDiff = 0 //decrease relDiff reset
 
-        } else {
+        } else if (this.states[schedulation].reference > newPrice) {
             this.states[schedulation].decrease.true ? doNothing() : this.states[schedulation].decrease.since = Date.now() //if the price is not increasing, mark now as start of incr.
             this.states[schedulation].decrease.true = true //decrease is true
             this.states[schedulation].decrease.instances++ //add onther point for decreasement*
@@ -482,15 +525,26 @@ function coin(incoin) {
         this.increaseNet = allIncreases - allDecreases
         this.price = parseFloat(coinsData[this.name].price)
     }
+    setInterval(() => {
+        if (coinsData[this.name]) {
+            this.price = coinsData[this.name].price
+        }
+    }, settings.reflectionInterval);
     coins[this.name] = this
     function scheduleCheck(type, time, coinName) {
         setInterval(() => {
+            schUpdates++
             coins[coinName].updatePrice(getCoinPrice(coinName), type)
         }, time / 2)
     }
 
+    new scheduleCheck("secondly", 1000, this.name)
+    new scheduleCheck("fiveSecondly", 5000, this.name)
+    new scheduleCheck("tenSecondly", 10000, this.name)
+    new scheduleCheck("twentySecondly", 20000, this.name)
     new scheduleCheck("biminutely", 1000 * 30, this.name)
     new scheduleCheck("minutely", 1000 * 60, this.name)
+    new scheduleCheck("fiveMinutely", 1000 * 60 * 5, this.name)
     new scheduleCheck("tenminutes", (1000 * 60) * 10, this.name)
     new scheduleCheck("bihourly", (1000 * 60) * 30, this.name)
     new scheduleCheck("hourly", (1000 * 60) * 60, this.name)

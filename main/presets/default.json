@@ -4,5 +4,6 @@
     "mobilePush": false,
     "systemPush": true,
     "dbSaveInterval": 5000,
-    "breakthroughInterval": 5000
+    "breakthroughInterval": 5000,
+    "reflectionInterval": 550
   }

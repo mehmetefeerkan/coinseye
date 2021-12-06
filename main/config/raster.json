@@ -31,9 +31,16 @@
     },
     "breakthroughInterval": {
         "definition": "Breakthrough update interval",
-        "question": "Breakthrough update refresh interval? : ",
+        "question": "Breakthrough update/refresh interval? : ",
         "type": "int",
         "maxVal": 30000,
         "minVal": 1000
+    },
+    "reflectionInterval": {
+        "definition": "Interval the coins poll their data from the coinData object.",
+        "question": "Reflection update/refresh interval? : ",
+        "type": "int",
+        "maxVal": 10000,
+        "minVal": 501
     }
 }

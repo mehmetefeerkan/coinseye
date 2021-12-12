@@ -187,6 +187,12 @@ app.get('/coins/list/increaseNet/', (req, res) => {
 app.get('/coins/list/increaseNet/absolute', (req, res) => {
     res.send(getRankedData("increaseNet", true))
 })
+app.get('/coins/list/increaseNetLeap/absolute', (req, res) => {
+    res.send(getRankedData("increaseNet_leap", true))
+})
+app.get('/coins/list/increaseNetLeap/', (req, res) => {
+    res.send(getRankedData("increaseNet_leap", false))
+})
 app.get('/coins/get/:cname', (req, res) => {
     res.send(coins[req.params.cname])
 })
@@ -589,4 +595,27 @@ function setCoinData(place, data) {
     });
 }
 
+function placeIndexes(place) {
+    let tarr = []
+    Object.keys(coins).forEach(element => {
+        tarr.push(coins[element])
+    });
+    tarr.sort((a, b) => (a[place] > b[place]) ? -1 : 1)
+    tarr.forEach((element, index) => {
+        if (element.name) {
+            (coins[element.name])[`${place}_index`] ? (coins[element.name])[`${place}_leap`] = (index - ((coins[element.name])[`${place}_index`])) : doNothing();
+            //console.log("old index for", element.name, "is", (coins[element.name])[`${place}_index`], "new one is", index, "leap is", (index - ((coins[element.name])[`${place}_index`])) );
+            (coins[element.name])[`${place}_index`] = index
+            if ((coins[element.name])[`${place}_leap`] > 100) {
+                console.log((coins[element.name])[`${place}_leap`], element.name);
+            }
+        }
+    })
+}
 
+setInterval(() => {
+    placeIndexes("upScoreGlobal")
+    placeIndexes("increaseAverage")
+    placeIndexes("increaseNet")
+    placeIndexes("decreaseAverage")
+}, 5000);
